@@ -1,0 +1,253 @@
+{
+  "name": "Personal Finance Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {}
+          ]
+        },
+        "simple": false,
+        "maxResults": 50,
+        "filters": {
+          "q": "payslip",
+          "sender": "YOUR_WORK_EMAIL"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [-544, -112],
+      "id": "1a5084df-f116-474c-a596-9c756bdb6f7e",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate?key=YOUR_GOOGLE_VISION_API_KEY",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"requests\": [\n    {\n      \"image\": {\n        \"content\": \"{{ $json.imageBase64 }}\"\n      },\n      \"features\": [\n        {\n          \"type\": \"TEXT_DETECTION\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [128, -112],
+      "id": "bb286f5d-307b-475d-851b-4d2cd5c887ed",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $('Gmail Trigger').first().json.html;\nconst match = html.match(/data:image\\/[^;]+;base64,([^\"]+)/);\nconst imageBase64 = match ? match[1] : '';\nreturn [{ json: { imageBase64 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-96, -112],
+      "id": "2e3d5fb0-024b-4768-a410-ac2783a2a93d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $('HTTP Request').first().json.responses[0].textAnnotations[0].description;\n\nconst dateMatch = text.match(/(\\d{2}\\/\\d{2}\\/\\d{4})/);\nconst payslipDate = dateMatch ? dateMatch[1] : '';\n\nlet netPay = '';\nconst netPayIndex = text.indexOf('Net Pay');\nif (netPayIndex !== -1) {\n  const remaining = text.substring(netPayIndex);\n  const amounts = [...remaining.matchAll(/£([\\d,]+\\.\\d{2})/g)];\n  netPay = amounts.length > 0 ? amounts[amounts.length - 1][1] : '';\n}\n\nfunction lastFridayOfMonth(year, month) {\n  const lastDay = new Date(year, month + 1, 0);\n  const dow = lastDay.getDay();\n  const daysBack = dow >= 5 ? dow - 5 : dow + 2;\n  return new Date(year, month, lastDay.getDate() - daysBack);\n}\n\nconst [currDay, currMonth, currYear] = payslipDate.split('/');\nconst currDate = new Date(`${currYear}-${currMonth}-${currDay}`);\nconst nextMonth = new Date(parseInt(currYear), parseInt(currMonth), 1);\nconst nextPayDate = lastFridayOfMonth(nextMonth.getFullYear(), nextMonth.getMonth());\nconst weeksToNextPay = Math.round((nextPayDate - currDate) / (1000 * 60 * 60 * 24 * 7));\n\nconst existingRows = $('Get row(s) in sheet').all().length;\nconst rowNum = existingRows + 2;\nconst prevRow = rowNum - 1;\n\nconst walletMoney = `=IF(B${rowNum}=4,(C${rowNum}/100*35/4),(C${rowNum}/100*45/5))`;\nconst caBalanceAa = `=IF(B${rowNum}=4,N${rowNum}-D${rowNum}-E${rowNum}-P${rowNum}-R${rowNum}-H${rowNum}-L${rowNum}-AH${rowNum},N${rowNum}-D${rowNum}-R${rowNum}-E${rowNum}-H${rowNum}-L${rowNum}-AH${rowNum})`;\nconst goldValue = `=W${rowNum}*V${rowNum}`;\nconst valueDiff = `=X${rowNum}-X${prevRow}`;\nconst netWorth = `=X${rowNum}+T${rowNum}+Q${rowNum}+O${rowNum}`;\nconst nwChange = `=Z${rowNum}-Z${prevRow}`;\nconst allRows = $('Get row(s) in sheet').all();\nconst lastRow = allRows[allRows.length - 1].json;\nconst Subs = lastRow['subs'];\nconst bills = lastRow['bills'];\nconst debt = lastRow['debt'];\nconst repayment = lastRow['repayment'];\nconst JAcontribution = lastRow['JA contribution'];\nconst ccbalance = lastRow['cc balance'];\nconst creditscore = lastRow['credit score'];\nconst addpension = lastRow['add pension'];\nconst pensionpot = lastRow['pension pot'];\nconst lisacon = lastRow['lisa con'];\nconst isacon = lastRow['isa con'];\nconst gold = allRows[allRows.length - 1].json['gold'];\nlet pensionContribution = '';\nconst nobMatch = text.match(/NOB UK 1\\s*[\\n\\r]+[£E]([\\d,]+\\.\\d{2})/);\nif (nobMatch) pensionContribution = parseFloat(nobMatch[1].replace(/,/g, '')).toFixed(2);\nreturn [{ json: { payslipDate, netPay, weeksToNextPay, walletMoney, caBalanceAa, goldValue, valueDiff, netWorth, nwChange, gold, pensionContribution, isacon, pensionpot, addpension, creditscore, ccbalance, JAcontribution, repayment, debt, bills, Subs, lisacon } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [352, -112],
+      "id": "449f648e-2e58-459a-823e-53ea6bc93a11",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "personal finances",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "gold price": "={{ $('HTTP Request1').first().json['pax-gold'].gbp / 31.1035 }}",
+            "date": "={{ $('Code in JavaScript1').first().json.payslipDate }}",
+            "interval": "={{ $('Code in JavaScript1').first().json.weeksToNextPay }}",
+            "Salary paid": "={{ $('Code in JavaScript1').first().json.netPay }}",
+            "Wallet money": "={{ $('Code in JavaScript1').first().json.walletMoney }}",
+            "ca balance AA": "={{ $('Code in JavaScript1').first().json.caBalanceAa }}",
+            "gold value": "={{ $('Code in JavaScript1').first().json.goldValue }}",
+            "value dif": "={{ $('Code in JavaScript1').first().json.valueDiff }}",
+            "NW Change": "={{ $('Code in JavaScript1').first().json.nwChange }}",
+            "net worth": "={{ $('Code in JavaScript1').first().json.netWorth }}",
+            "gold": "={{ $('Code in JavaScript1').first().json.gold }}",
+            "pension": "={{ $('Code in JavaScript1').first().json.pensionContribution }}",
+            "Subs": "={{ $('Code in JavaScript1').item.json.Subs }}",
+            "bills": "={{ $('Code in JavaScript1').item.json.bills }}",
+            "debt": "={{ $('Code in JavaScript1').item.json.debt }}",
+            "repayment": "={{ $('Code in JavaScript1').item.json.repayment }}",
+            "JA contribution": "={{ $('Code in JavaScript1').item.json.JAcontribution }}",
+            "cc balance": "please input",
+            "pension pot": "please input",
+            "CA balance BA": "please input",
+            "lisa": "please input",
+            "isa": "please input",
+            "isa con": "={{ $('Code in JavaScript1').item.json.isacon }}",
+            "add pension": "={{ $('Code in JavaScript1').item.json.addpension }}",
+            "credit score": "please input",
+            "lisa con": "={{ $('Code in JavaScript1').item.json.lisacon }}"
+          },
+          "matchingColumns": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [800, -112],
+      "id": "d44c4cde-1b44-4bd1-b0e9-66c3a5163fc9",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "personal finances",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-320, -112],
+      "id": "37b21e50-8744-4734-a31c-cc94e14a04be",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=gbp",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [576, -112],
+      "id": "09cfd186-ab4a-44e4-8a09-7c6f67a06da9",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('HTTP Request2').first().json.choices[0].message.content }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1248, -112],
+      "id": "cabb38c6-2c3d-4e3f-900b-d737dfc3265a",
+      "name": "Send a text message",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={\n  \"model\": \"llama-3.1-8b-instant\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a short friendly financial summary message. Payslip date: {{ $('Code in JavaScript1').first().json.payslipDate }}, Net pay: £{{ $('Code in JavaScript1').first().json.netPay }}, Weeks until next pay: {{ $('Code in JavaScript1').first().json.weeksToNextPay }}, Gold price per gram: £{{ ($('HTTP Request1').first().json['pax-gold'].gbp / 31.1035).toFixed(2) }} current value of all gold owned: {{ ($('Code in JavaScript1').first().json.gold * $('HTTP Request1').first().json['pax-gold'].gbp / 31.1035).toFixed(2) }}. Keep it under 100 words and conversational.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1024, -112],
+      "id": "395f83fd-a186-4056-98a3-ba3de3ced14c",
+      "name": "HTTP Request2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [[{"node": "Get row(s) in sheet", "type": "main", "index": 0}]]
+    },
+    "Code in JavaScript": {
+      "main": [[{"node": "HTTP Request", "type": "main", "index": 0}]]
+    },
+    "HTTP Request": {
+      "main": [[{"node": "Code in JavaScript1", "type": "main", "index": 0}]]
+    },
+    "Code in JavaScript1": {
+      "main": [[{"node": "HTTP Request1", "type": "main", "index": 0}]]
+    },
+    "Get row(s) in sheet": {
+      "main": [[{"node": "Code in JavaScript", "type": "main", "index": 0}]]
+    },
+    "HTTP Request1": {
+      "main": [[{"node": "Append row in sheet", "type": "main", "index": 0}]]
+    },
+    "Append row in sheet": {
+      "main": [[{"node": "HTTP Request2", "type": "main", "index": 0}]]
+    },
+    "HTTP Request2": {
+      "main": [[{"node": "Send a text message", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
