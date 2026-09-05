@@ -105,12 +105,17 @@ calc; ±0.01 numeric tolerance for net pay and pension contribution, after
 stripping currency symbols and thousands separators so formatting drift
 alone doesn't fail a numerically-correct read.
 
-**Measured, not assumed:** the current parser scores an **87.5%
-field-level pass rate** (42 / 48 assertions), with **7 of 12 payslips
-fully correct**. Net pay is the weakest field at **75%** — its regex only
-accepts `£`, so an OCR'd `E`, a trailing year-to-date figure, or a lost
-space in the label each defeat it. Pay date and pension contribution
-score 92% each.
+**Measured, not assumed:** the parser scores a **93.8% field-level pass
+rate** (45 / 48 assertions), with **10 of 12 payslips fully correct**.
+Net pay reads correctly on all 12 after the amount matcher was widened to
+tolerate an OCR'd `E` for `£`, a missing currency symbol, and a `Net Pay`
+label with no space, and to take the first amount after the *last*
+`Net Pay` label rather than the last amount anywhere after it (which used
+to grab a trailing year-to-date column). The two remaining failures are
+one payslip that prints a date of birth above the pay date — the date
+regex takes the first `DD/MM/YYYY` it sees, which also throws off the
+weeks-to-next-pay calc — and one that puts the pension figure on the same
+line as its `NOB UK 1` label instead of the line below.
 
 **Known limitation:** the 12 cases are hand-written in one broad payslip
 house style, so the score measures how the parser handles *anticipated*
