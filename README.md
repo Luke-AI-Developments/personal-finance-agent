@@ -79,6 +79,47 @@ Send Telegram message
 
 ---
 
+## OCR extraction eval (golden dataset)
+
+The whole workflow's accuracy rests on one node of regex parsing the
+Google Cloud Vision OCR text. `eval/payslip-eval.js` measures how well
+that holds up, using the same approach as the
+[Kcal-Tracker](https://github.com/Luke-AI-Developments/Kcal-Tracker)
+retrieval eval: a fixed set of known-correct examples, run through the
+real extraction code, scored field by field.
+
+**What it tests:** 12 synthetic payslips — invented names and numbers in
+realistic UK layout, no real payslip data in the repo — covering clean
+reads plus the noise that breaks regex parsers: `£` misread as `E`, a
+year-to-date column after the `Net Pay` label, the pension figure inline
+with its label, a date of birth printed above the pay date, a dropped
+space in `Net Pay`, and a December date that rolls the next-pay
+calculation into the following year. Rather than re-implement the parser,
+the eval pulls the JavaScript straight out of the `Code in JavaScript1`
+node of `personal-finance-agent.json` and runs it, so it can't drift
+from the workflow.
+
+**Tech:** plain Node, no dependencies (`node eval/payslip-eval.js`).
+Exact-match scoring for the pay date and the integer weeks-to-next-pay
+calc; ±0.01 numeric tolerance for net pay and pension contribution, after
+stripping currency symbols and thousands separators so formatting drift
+alone doesn't fail a numerically-correct read.
+
+**Measured, not assumed:** the current parser scores an **87.5%
+field-level pass rate** (42 / 48 assertions), with **7 of 12 payslips
+fully correct**. Net pay is the weakest field at **75%** — its regex only
+accepts `£`, so an OCR'd `E`, a trailing year-to-date figure, or a lost
+space in the label each defeat it. Pay date and pension contribution
+score 92% each.
+
+**Known limitation:** the 12 cases are hand-written in one broad payslip
+house style, so the score measures how the parser handles *anticipated*
+failure modes — not the real distribution of a specific employer's
+payslip images, where a layout nobody thought to fake would go
+unrepresented.
+
+---
+
 ## Prerequisites
 
 - [n8n](https://docs.n8n.io/hosting/) installed locally or self-hosted
